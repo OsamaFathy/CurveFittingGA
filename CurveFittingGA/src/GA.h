@@ -7,33 +7,34 @@ using namespace std;
 
 template<class GeneType>
 class GA {
+public:
+	typedef vector<GeneType> Chromosome;
+
+	GA(int iterations_count, int population_size, int chromosome_size, double pc,
+			double pm);
+	pair<Chromosome, double> Run();
 
 protected:
-	typedef vector<GeneType> Chromosome;
 	int chromosome_size;
 	int iterations_count;
 	double pc, pm;
 	vector<Chromosome> population;
-	vector<double> fitness_value;
+	vector<double> fitness;
 	pair<int, int> parents;
-	virtual void initialize() = 0;
-	virtual double fitness(Chromosome chromosome) = 0;
-	void selection();
-	virtual void crossover() = 0;
-	void mutation(int ind, int t);
-	virtual GeneType mutate_gene(GeneType gene, int t) = 0;
 
-public:
-	GA(int iterations_count, int population_size, int chromosome_size,
-			double pc, double pm);
-	pair< vector<GeneType>, double > run();
+	void Select();
+	void MutateChromosome(int child_index, int generation_number);
+	virtual void Initialize() = 0;
+	virtual double CalculateFitness(Chromosome chromosome) = 0;
+	virtual void Crossover() = 0;
+	virtual GeneType MutateGene(GeneType gene, int generation_number) = 0;
 };
 
 template<class GeneType>
 GA<GeneType>::GA(int iterations_count, int population_size, int chromosome_size,
 		double pc, double pm) {
 	population.resize(population_size);
-	fitness_value.resize(population_size);
+	fitness.resize(population_size);
 	this->iterations_count = iterations_count;
 	this->chromosome_size = chromosome_size;
 	this->pc = pc;
@@ -41,59 +42,64 @@ GA<GeneType>::GA(int iterations_count, int population_size, int chromosome_size,
 }
 
 template<class GeneType>
-void GA<GeneType>::mutation(int ind, int t) {
+void GA<GeneType>::MutateChromosome(int child_index, int generation_number) {
 	int gene_index = rand() % chromosome_size;
-	population[ind][gene_index] = mutate_gene(population[ind][gene_index], t);
-	fitness_value[ind] = fitness(population[ind]);
+	population[child_index][gene_index] = MutateGene(
+			population[child_index][gene_index], generation_number);
+	fitness[child_index] = CalculateFitness(population[child_index]);
 }
 
 template<class GeneType>
-void GA<GeneType>::selection() {
+void GA<GeneType>::Select() {
 	int pop_sz = population.size();
 	double cummulative[pop_sz];
 	for (int i = 0; i < pop_sz; i++) {
-		cummulative[i] = bool(i) * cummulative[i - 1] + 1000.0/(1e-7 + fitness_value[i]);
+		cummulative[i] = bool(i) * cummulative[i - 1] + fitness[i];
 	}
 
-	double rand1 = max(rand()-1.0, 0.0)/RAND_MAX * cummulative[pop_sz - 1];
+	double rand1 = (double) rand() / RAND_MAX * cummulative[pop_sz - 1];
 	int gene1 = upper_bound(cummulative, cummulative + pop_sz, rand1)
 			- cummulative;
-	double rand2 = max(rand()-1.0, 0.0)/RAND_MAX * cummulative[pop_sz - 1];
+	double rand2 = (double) rand() / RAND_MAX * cummulative[pop_sz - 1];
 	int gene2 = upper_bound(cummulative, cummulative + pop_sz, rand2)
 			- cummulative;
 	parents = {gene1, gene2};
 }
 
 template<class GeneType>
-pair< vector<GeneType>, double > GA<GeneType>::run() {
-	initialize();
-	for (int i = 0; i < iterations_count; i++) {
+pair<vector<GeneType>, double> GA<GeneType>::Run() {
+	Initialize();
+
+	double max_fitness = 0;
+	Chromosome best;
+
+	for (int i = 0; i < population.size(); ++i) {
+		if (fitness[i] > max_fitness) {
+			max_fitness = fitness[i];
+			best = population[i];
+		}
+	}
+
+	for (int i = 0; i < iterations_count; ++i) {
 
 		double r1 = rand() / (double) RAND_MAX;
 		double r2 = rand() / (double) RAND_MAX;
 		double r3 = rand() / (double) RAND_MAX;
 
-		selection();
+		Select();
 
-		if (r1 < pc)
-			crossover();
+		if (r1 < pc) {
+			Crossover();
+		}
 		if (r2 < pm) {
-			mutation(parents.first, i);
+			MutateChromosome(parents.first, i);
 		}
-		if (r3 < pm && r1 < pc) {
-			mutation(parents.second, i);
-		}
-
-	}
-
-	double mx = 2e18;
-	int ind = -1;
-	for (int i = 0; i < population.size(); i++){
-		if(mx > fitness_value[i]){
-			ind = i, mx = fitness_value[i];
+		if (r3 < pm) {
+			MutateChromosome(parents.second, i);
 		}
 	}
-	return {population[ind], mx};
+
+	return {best, max_fitness};
 }
 
 #endif /* GA_H_ */
